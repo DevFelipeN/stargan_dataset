@@ -654,6 +654,7 @@ class Solver(object):
                     'Processed {} images...'.format(
                         image_counter
                     )
+                )
     
         print()
         print('Generation completed.')
