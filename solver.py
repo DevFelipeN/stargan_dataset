@@ -521,153 +521,34 @@ class Solver(object):
                 print ('Decayed learning rates, g_lr: {}, d_lr: {}.'.format(g_lr, d_lr))
 
     def test(self):
-        """Generate individual images for selected hair transformations."""
-    
+        """Translate images using StarGAN trained on a single dataset."""
         # Load the trained generator.
         self.restore_model(self.test_iters)
-    
+        
         # Set data loader.
         if self.dataset == 'CelebA':
             data_loader = self.celeba_loader
         elif self.dataset == 'RaFD':
             data_loader = self.rafd_loader
-        else:
-            raise ValueError('This generation method is intended for CelebA.')
-    
-        # ---------------------------------------------------------
-        # Indices of the three hair attributes
-        # ---------------------------------------------------------
-    
-        hair_attributes = [
-            'Black_Hair',
-            'Blond_Hair',
-            'Brown_Hair'
-        ]
-    
-        hair_indices = []
-    
-        for attr in hair_attributes:
-    
-            if attr not in self.selected_attrs:
-                raise ValueError(
-                    '{} was not found in selected_attrs.'.format(attr)
-                )
-    
-            hair_indices.append(
-                self.selected_attrs.index(attr)
-            )
-    
-        # ---------------------------------------------------------
-        # Create one output directory for each transformation
-        # ---------------------------------------------------------
-    
-        output_dirs = {}
-    
-        for attr in hair_attributes:
-    
-            output_dir = os.path.join(
-                self.result_dir,
-                attr
-            )
-    
-            os.makedirs(
-                output_dir,
-                exist_ok=True
-            )
-    
-            output_dirs[attr] = output_dir
-    
-        # ---------------------------------------------------------
-        # Generate images
-        # ---------------------------------------------------------
-    
+        
         with torch.no_grad():
-    
-            image_counter = 0
-    
-            for x_real, c_org in data_loader:
-    
+            for i, (x_real, c_org) in enumerate(data_loader):
+
+                # Prepare input images and target domain labels.
                 x_real = x_real.to(self.device)
-                c_org = c_org.to(self.device)
-    
-                batch_size = x_real.size(0)
-    
-                # -------------------------------------------------
-                # Generate each hair transformation separately
-                # -------------------------------------------------
-    
-                for attr, hair_idx in zip(
-                    hair_attributes,
-                    hair_indices
-                ):
-    
-                    # Copy the original attributes.
-                    c_trg = c_org.clone()
-    
-                    # ---------------------------------------------
-                    # Set the selected hair color to 1
-                    # and the other hair colors to 0.
-                    # ---------------------------------------------
-    
-                    c_trg[:, hair_indices[0]] = 0
-                    c_trg[:, hair_indices[1]] = 0
-                    c_trg[:, hair_indices[2]] = 0
-    
-                    c_trg[:, hair_idx] = 1
-    
-                    # ---------------------------------------------
-                    # Generate fake images.
-                    # ---------------------------------------------
-    
-                    x_fake = self.G(
-                        x_real,
-                        c_trg
-                    )
-    
-                    # ---------------------------------------------
-                    # Save each image individually.
-                    # ---------------------------------------------
-    
-                    for j in range(batch_size):
-    
-                        image_number = image_counter + j + 1
-    
-                        filename = '{:06d}.png'.format(
-                            image_number
-                        )
-    
-                        result_path = os.path.join(
-                            output_dirs[attr],
-                            filename
-                        )
-    
-                        save_image(
-                            self.denorm(
-                                x_fake[j].cpu()
-                            ),
-                            result_path
-                        )
-    
-                image_counter += batch_size
-    
-                print(
-                    'Processed {} images...'.format(
-                        image_counter
-                    )
-                )
-    
-        print()
-        print('Generation completed.')
-    
-        for attr in hair_attributes:
-    
-            print(
-                '{}: {}'.format(
-                    attr,
-                    output_dirs[attr]
-                )
-            )
-            
+                c_trg_list = self.create_labels(c_org, self.c_dim, self.dataset, self.selected_attrs)
+
+                # Translate images.
+                x_fake_list = [x_real]
+                for c_trg in c_trg_list:
+                    x_fake_list.append(self.G(x_real, c_trg))
+
+                # Save the translated images.
+                x_concat = torch.cat(x_fake_list, dim=3)
+                result_path = os.path.join(self.result_dir, '{}-images.jpg'.format(i+1))
+                save_image(self.denorm(x_concat.data.cpu()), result_path, nrow=1, padding=0)
+                print('Saved real and fake images into {}...'.format(result_path))
+
     def test_multi(self):
         """Translate images using StarGAN trained on multiple datasets."""
         # Load the trained generator.
